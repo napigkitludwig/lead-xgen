@@ -2,7 +2,7 @@
  * Opens a visible browser window so the user can log in to their own Facebook
  * account, then saves that session for the scraper.
  *
- * Usage: node facebook-login.mjs <session-file>
+ * Usage: node facebook-login.mjs <session-file> [playwright|puppeteer]
  * Prints {"id": "...", "name": "..."} to stdout on success.
  *
  * Automated access can get a Facebook account restricted, so use an account you
@@ -10,24 +10,23 @@
  */
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { chromium } from 'playwright';
+import { closeBrowser, launchBrowser, sleep } from './browser.mjs';
 import { loggedInUserId, readAccountName } from './facebook-session.mjs';
 
 const output = process.argv[2] ? resolve(process.argv[2]) : null;
 
 if (!output) {
-    process.stderr.write('Usage: node facebook-login.mjs <session-file>\n');
+    process.stderr.write('Usage: node facebook-login.mjs <session-file> [playwright|puppeteer]\n');
     process.exit(2);
 }
 
 mkdirSync(dirname(output), { recursive: true });
 
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
-const browser = await chromium.launch({ headless: false });
+const session = await launchBrowser({ method: process.argv[3], headless: false });
 
 try {
-    const context = await browser.newContext({ locale: 'en-US', viewport: null });
-    const page = await context.newPage();
+    const page = await session.newPage();
 
     await page.goto('https://www.facebook.com/login');
 
@@ -39,10 +38,10 @@ try {
             throw new Error('The Facebook login window was closed before logging in.');
         }
 
-        id = await loggedInUserId(context).catch(() => null);
+        id = await loggedInUserId(session).catch(() => null);
 
         if (!id) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await sleep(2000);
         }
     }
 
@@ -50,17 +49,17 @@ try {
         throw new Error('Timed out waiting for the Facebook login.');
     }
 
-    await page.waitForTimeout(3000);
+    await sleep(3000);
 
     const name = await readAccountName(page);
 
-    await context.storageState({ path: output });
+    await session.saveState(output);
     await new Promise((resolve) => process.stdout.write(JSON.stringify({ id, name }), resolve));
 } catch (error) {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 2;
 } finally {
-    await Promise.race([browser.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10000))]);
+    await closeBrowser(session);
 }
 
 process.exit(process.exitCode ?? 0);

@@ -44,10 +44,11 @@ Lead xGenerator is a modern, high-performance lead generation and management pla
    composer run setup
    ```
 
-5. Install the browser that Playwright uses for scraping:
+5. Install the browsers used for scraping. The app can scrape with either Playwright or Puppeteer, so install both:
 
    ```bash
    npx playwright install chromium
+   npx puppeteer browsers install chrome
    ```
 
 ## Running the Application
@@ -66,10 +67,11 @@ If Vite's default port is busy it picks the next free one automatically; no acti
 
 1. Register or log in, then open **Generate Leads** in the sidebar.
 2. **Choose a source.** Google Maps and Facebook are available (Facebook needs the one-time login described below). LinkedIn is listed but disabled, because it restricts automated access.
-3. **Choose how to find leads:** a specific town/city, multiple towns/cities, a specific country, multiple countries, or a geofence (latitude/longitude plus a radius in kilometres or miles).
-4. **Choose business categories** (dental clinics, orthodontists, periodontists and more) and how many leads you need. The search stops as soon as that many leads are found, then the request is marked Completed, so nothing keeps running in the background.
-5. The request is queued and scraped by Playwright in the background. Open **Lead Requests** to see every request with its date and time, status and lead count.
-6. Open a request to see its leads, then click **Export to Excel** or **Export to Google Sheets**.
+3. **Choose a scraping method:** Playwright (default) or Puppeteer. The method you pick is the one used to scrape that request, and it is shown on the request page. Both return the same lead data.
+4. **Choose how to find leads:** a specific town/city, multiple towns/cities, a specific country, multiple countries, or a geofence (latitude/longitude plus a radius in kilometres or miles).
+5. **Choose business categories** (dental clinics, orthodontists, periodontists and more) and how many leads you need. The search stops as soon as that many leads are found, then the request is marked Completed, so nothing keeps running in the background.
+6. The request is queued and scraped in the background with the method you chose. Open **Lead Requests** to see every request with its date and time, status and lead count.
+7. Open a request to see its leads, then click **Export to Excel** or **Export to Google Sheets**.
 
 Each lead has a business name, email, phone, first name, last name, category, website, location, town, zip code and country. Leads that have both an email and a phone number are listed (and exported) first; tick "Only keep leads that have both an email and a phone number" when generating to drop the rest. The Location is a link that opens the business in Google Maps, in the table and in the exports. Town, zip code and country are read from the address, so they can be empty or occasionally wrong for unusual address formats. Phone, website and address come from Google Maps. Email and contact name are looked up on the business's own website, so they are filled in only when that site shows them.
 

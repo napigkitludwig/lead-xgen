@@ -1,8 +1,9 @@
 /**
- * Facebook Pages lead scraper (Playwright).
+ * Facebook Pages lead scraper (Playwright or Puppeteer).
  *
  * Usage: node facebook.mjs '<json job>'
- *   job: { searchUrl: string, maxResults: number, enrichWebsites: boolean, storageState: string }
+ *   job: { searchUrl, maxResults, stopAfter?, requireContact?, storageState, method? }
+ *   method is "playwright" (default) or "puppeteer".
  *
  * Facebook only shows page search results to logged-in visitors, so a saved
  * session is required. Each user connects their own account from the app (Generate Leads > Facebook).
@@ -10,7 +11,7 @@
  * Prints a JSON array of leads to stdout. Progress and errors go to stderr.
  */
 import { existsSync } from 'node:fs';
-import { chromium } from 'playwright';
+import { closeBrowser, launchBrowser, sleep } from './browser.mjs';
 
 const job = JSON.parse(process.argv[2] ?? '{}');
 const maxResults = Math.min(Math.max(Number(job.maxResults) || 20, 1), 60);
@@ -22,7 +23,7 @@ const fail = (message) => {
     log(message);
     process.exit(2);
 };
-const pause = (min, max) => new Promise((resolve) => setTimeout(resolve, min + Math.random() * (max - min)));
+const pause = (min, max) => sleep(min + Math.random() * (max - min));
 
 const EMAIL_PATTERN = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const IGNORED_EMAIL = /(\.(png|jpe?g|gif|svg|webp)$|example\.|sentry|wixpress|domain\.com|yourname)/i;
@@ -69,7 +70,7 @@ function unwrapRedirect(href) {
 async function assertLoggedIn(page) {
     const blocked = page.url().includes('/login') || page.url().includes('/checkpoint');
 
-    if (blocked || (await page.locator('input[name="pass"]').count()) > 0) {
+    if (blocked || (await page.exists('input[name="pass"]'))) {
         fail('The Facebook session expired or was blocked. Open Generate Leads, choose Facebook and log in again.');
     }
 }
@@ -79,13 +80,13 @@ async function collectPageUrls(page) {
     let stale = 0;
 
     while (urls.size < maxResults && stale < 4) {
-        const hrefs = await page.$$eval('div[role="feed"] a[role="link"], div[role="article"] a[role="link"]', (anchors) => anchors.map((a) => a.href));
+        const hrefs = await page.hrefs('div[role="feed"] a[role="link"], div[role="article"] a[role="link"]');
         const before = urls.size;
 
         hrefs.map(pageUrl).filter(Boolean).forEach((url) => urls.add(url));
         stale = urls.size === before ? stale + 1 : 0;
 
-        await page.mouse.wheel(0, 3000);
+        await page.wheel(3000);
         await pause(1200, 2200);
     }
 
@@ -93,19 +94,23 @@ async function collectPageUrls(page) {
 }
 
 async function readPage(page, url) {
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('h1', { timeout: 15000 });
+    await page.goto(url);
+
+    if (!(await page.waitFor('h1', 15000))) {
+        throw new Error('The page did not load');
+    }
+
     await pause(1200, 2200);
 
-    const text = await page.innerText('body');
+    const text = await page.bodyText();
     const email = (text.match(EMAIL_PATTERN) ?? []).find((value) => !IGNORED_EMAIL.test(value));
     const phone = (text.match(PHONE_PATTERN) ?? [null])[0];
-    const links = await page.$$eval('a[href]', (anchors) => anchors.map((a) => a.href));
+    const links = await page.hrefs('a[href]');
     const website = links.map(unwrapRedirect).find((href) => href && /^https?:\/\//.test(href) && !/facebook\.com|fb\.com|instagram\.com|messenger\.com/.test(href));
     const name = text.match(NAME_PATTERN);
 
     return {
-        business_name: (await page.locator('h1').first().innerText()).trim(),
+        business_name: await page.text('h1'),
         category: null,
         location: null,
         phone: phone ? phone.trim() : null,
@@ -117,13 +122,14 @@ async function readPage(page, url) {
     };
 }
 
-const browser = await chromium.launch({ headless: true });
+const session = await launchBrowser({ method: job.method, storageState: job.storageState });
 
 try {
-    const context = await browser.newContext({ storageState: job.storageState, locale: 'en-US', viewport: { width: 1280, height: 900 } });
-    const page = await context.newPage();
+    log(`Using ${session.method}`);
 
-    await page.goto(job.searchUrl, { waitUntil: 'domcontentloaded' });
+    const page = await session.newPage();
+
+    await page.goto(job.searchUrl);
     await pause(2500, 4000);
     await assertLoggedIn(page);
 
@@ -152,7 +158,7 @@ try {
     await new Promise((resolve) => process.stdout.write(JSON.stringify(leads), resolve));
 } finally {
     // Never let a stuck browser keep the job running once the leads are collected.
-    await Promise.race([browser.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10000))]);
+    await closeBrowser(session);
 }
 
 process.exit(0);

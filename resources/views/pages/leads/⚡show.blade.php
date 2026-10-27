@@ -77,7 +77,7 @@ new #[Title('Leads')] class extends Component {
                 {{ $leadRequest->source->label() }} · {{ $leadRequest->locationSummary() }}
             </flux:heading>
             <flux:subheading>
-                {{ $leadRequest->created_at->format('M j, Y g:i A') }} · {{ implode(', ', $leadRequest->categories) }}
+                {{ $leadRequest->created_at->format('M j, Y g:i A') }} · {{ implode(', ', $leadRequest->categories) }} · {{ $leadRequest->scraping_method->label() }}
             </flux:subheading>
         </div>
 

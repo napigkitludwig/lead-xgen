@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\LeadRequestStatus;
 use App\Enums\LeadSource;
+use App\Enums\ScrapingMethod;
 use App\Jobs\ConnectFacebookAccount;
 use App\Jobs\ScrapeLeadRequest;
 use App\Models\LeadRequest;
@@ -121,7 +122,7 @@ class ScrapeLeadRequestJobTest extends TestCase
         $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
             $mock->shouldReceive('scrape')
                 ->once()
-                ->with(\Mockery::any(), 2, true, 2, false)
+                ->with(\Mockery::any(), 2, true, 2, false, ScrapingMethod::Playwright)
                 ->andReturn([
                     $this->place('First', '111'),
                     $this->place('Second', '222'),
@@ -147,9 +148,9 @@ class ScrapeLeadRequestJobTest extends TestCase
         ]);
 
         $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
-            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 3, true, 3, false)
+            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 3, true, 3, false, ScrapingMethod::Playwright)
                 ->andReturn([$this->place('One', '111')]);
-            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 2, true, 2, false)
+            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 2, true, 2, false, ScrapingMethod::Playwright)
                 ->andReturn([$this->place('Two', '222'), $this->place('Three', '333')]);
         });
 
@@ -163,12 +164,28 @@ class ScrapeLeadRequestJobTest extends TestCase
         $leadRequest = LeadRequest::factory()->create(['max_results' => 5, 'only_with_contact' => true]);
 
         $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
-            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 120, true, 5, true)->andReturn([]);
+            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 120, true, 5, true, ScrapingMethod::Playwright)->andReturn([]);
         });
 
         (new ScrapeLeadRequest($leadRequest))->handle();
 
         $this->assertSame(LeadRequestStatus::Completed, $leadRequest->refresh()->status);
+    }
+
+    public function test_the_chosen_scraping_method_is_passed_to_the_scraper(): void
+    {
+        $leadRequest = LeadRequest::factory()->create(['scraping_method' => ScrapingMethod::Puppeteer]);
+
+        $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
+            $mock->shouldReceive('scrape')
+                ->once()
+                ->with(\Mockery::any(), 20, true, 20, false, ScrapingMethod::Puppeteer)
+                ->andReturn([$this->place('Puppeteer Dental', '555')]);
+        });
+
+        (new ScrapeLeadRequest($leadRequest))->handle();
+
+        $this->assertDatabaseHas('leads', ['business_name' => 'Puppeteer Dental']);
     }
 
     public function test_it_saves_town_zip_code_and_country(): void

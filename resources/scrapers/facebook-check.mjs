@@ -1,11 +1,11 @@
 /**
  * Checks whether a saved Facebook session is still logged in.
  *
- * Usage: node facebook-check.mjs <session-file>
+ * Usage: node facebook-check.mjs <session-file> [playwright|puppeteer]
  * Prints {"loggedIn": bool, "id": ?string, "name": ?string} to stdout.
  */
 import { existsSync } from 'node:fs';
-import { chromium } from 'playwright';
+import { closeBrowser, launchBrowser, sleep } from './browser.mjs';
 import { loggedInUserId, readAccountName } from './facebook-session.mjs';
 
 const sessionFile = process.argv[2];
@@ -16,17 +16,16 @@ if (!sessionFile || !existsSync(sessionFile)) {
     process.exit(0);
 }
 
-const browser = await chromium.launch({ headless: true });
+const session = await launchBrowser({ method: process.argv[3], storageState: sessionFile });
 
 try {
-    const context = await browser.newContext({ storageState: sessionFile, locale: 'en-US' });
-    const page = await context.newPage();
+    const page = await session.newPage();
 
-    await page.goto('https://www.facebook.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2500);
+    await page.goto('https://www.facebook.com/', { timeout: 30000 });
+    await sleep(2500);
 
-    const id = await loggedInUserId(context);
-    const blocked = page.url().includes('/login') || page.url().includes('/checkpoint') || (await page.locator('input[name="pass"]').count()) > 0;
+    const id = await loggedInUserId(session);
+    const blocked = page.url().includes('/login') || page.url().includes('/checkpoint') || (await page.exists('input[name="pass"]'));
 
     if (!id || blocked) {
         await print({ loggedIn: false, id: null, name: null });
@@ -37,7 +36,7 @@ try {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 2;
 } finally {
-    await Promise.race([browser.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10000))]);
+    await closeBrowser(session);
 }
 
 process.exit(process.exitCode ?? 0);

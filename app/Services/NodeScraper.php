@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ScrapingMethod;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -37,6 +38,7 @@ abstract class NodeScraper
         bool $enrichWebsites = true,
         ?int $stopAfter = null,
         bool $requireContact = false,
+        ScrapingMethod $method = ScrapingMethod::Playwright,
     ): array {
         $process = new Process(
             [
@@ -49,6 +51,7 @@ abstract class NodeScraper
                     'enrichWebsites' => $enrichWebsites,
                     'stopAfter' => $stopAfter,
                     'requireContact' => $requireContact,
+                    'method' => $method->value,
                 ], JSON_THROW_ON_ERROR),
             ],
             base_path(),

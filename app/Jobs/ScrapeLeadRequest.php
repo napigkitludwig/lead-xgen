@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\LeadRequestStatus;
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
+use App\Enums\ScrapingMethod;
 use App\Models\LeadRequest;
 use App\Services\FacebookScraper;
 use App\Services\GoogleMapsScraper;
@@ -59,6 +60,7 @@ class ScrapeLeadRequest implements ShouldQueue
                     true,
                     $isGeofence ? null : $remaining,
                     $onlyWithContact,
+                    $this->leadRequest->scraping_method ?? ScrapingMethod::Playwright,
                 );
             } catch (Throwable $exception) {
                 $failures[] = "{$target['query']}: {$exception->getMessage()}";

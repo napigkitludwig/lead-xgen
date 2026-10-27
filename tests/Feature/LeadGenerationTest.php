@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
+use App\Enums\ScrapingMethod;
 use App\Exports\LeadsExport;
 use App\Jobs\ConnectFacebookAccount;
 use App\Jobs\ScrapeLeadRequest;
@@ -34,8 +35,10 @@ class LeadGenerationTest extends TestCase
 
         Livewire::actingAs($user)
             ->test('pages::leads.create')
-            ->set('locationMode', 'cities')
             ->call('next')
+            ->set('scrapingMethod', 'puppeteer')
+            ->call('next')
+            ->set('locationMode', 'cities')
             ->set('locations', "Manila\nCebu City\nManila")
             ->call('next')
             ->set('categories', ['Dentist', 'Orthodontist'])
@@ -45,6 +48,7 @@ class LeadGenerationTest extends TestCase
         $leadRequest = $user->leadRequests()->sole();
 
         $this->assertSame(LeadSource::GoogleMaps, $leadRequest->source);
+        $this->assertSame(ScrapingMethod::Puppeteer, $leadRequest->scraping_method);
         $this->assertSame(LocationMode::Cities, $leadRequest->location_mode);
         $this->assertSame(['Manila', 'Cebu City'], $leadRequest->locations);
         $this->assertCount(4, $leadRequest->searchTargets());
@@ -59,8 +63,9 @@ class LeadGenerationTest extends TestCase
 
         Livewire::actingAs($user)
             ->test('pages::leads.create')
-            ->set('locationMode', 'geofence')
             ->call('next')
+            ->call('next')
+            ->set('locationMode', 'geofence')
             ->set('latitude', 14.5995)
             ->set('longitude', 120.9842)
             ->set('unit', 'mi')
@@ -73,16 +78,41 @@ class LeadGenerationTest extends TestCase
 
         $this->assertEqualsWithDelta(16.09, $leadRequest->radius_km, 0.01);
         $this->assertNull($leadRequest->locations);
+        $this->assertSame(ScrapingMethod::Playwright, $leadRequest->scraping_method);
     }
 
-    public function test_location_is_required_to_leave_step_two(): void
+    public function test_scraping_method_is_chosen_after_the_source_and_defaults_to_playwright(): void
+    {
+        Livewire::actingAs(User::factory()->create())
+            ->test('pages::leads.create')
+            ->assertSet('scrapingMethod', 'playwright')
+            ->call('next')
+            ->assertSet('step', 2)
+            ->assertSee('Playwright')
+            ->assertSee('Puppeteer');
+    }
+
+    public function test_only_playwright_or_puppeteer_can_be_chosen(): void
+    {
+        Livewire::actingAs(User::factory()->create())
+            ->test('pages::leads.create')
+            ->call('next')
+            ->set('scrapingMethod', 'selenium')
+            ->call('next')
+            ->assertHasErrors(['scrapingMethod'])
+            ->assertSet('step', 2);
+    }
+
+    public function test_location_is_required_to_leave_the_location_step(): void
     {
         Livewire::actingAs(User::factory()->create())
             ->test('pages::leads.create')
             ->call('next')
             ->call('next')
+            ->assertSet('step', 3)
+            ->call('next')
             ->assertHasErrors(['locations'])
-            ->assertSet('step', 2);
+            ->assertSet('step', 3);
     }
 
     public function test_unavailable_sources_cannot_be_selected(): void
@@ -131,11 +161,12 @@ class LeadGenerationTest extends TestCase
             ->test('pages::leads.create')
             ->set('source', 'facebook')
             ->call('next')
-            ->assertSet('step', 2)
+            ->call('next')
+            ->assertSet('step', 3)
             ->set('locationMode', 'geofence')
             ->call('next')
             ->assertHasErrors(['locationMode'])
-            ->assertSet('step', 2);
+            ->assertSet('step', 3);
     }
 
     public function test_log_in_button_opens_the_facebook_window_and_picks_up_the_result(): void

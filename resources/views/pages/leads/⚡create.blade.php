@@ -3,6 +3,7 @@
 use App\Enums\BusinessCategory;
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
+use App\Enums\ScrapingMethod;
 use App\Jobs\ScrapeLeadRequest;
 use App\Jobs\ConnectFacebookAccount;
 use App\Services\FacebookSession;
@@ -17,9 +18,13 @@ use Livewire\Component;
 new #[Title('Generate leads')] class extends Component {
     private const MILES_TO_KM = 1.609344;
 
+    private const TOTAL_STEPS = 4;
+
     public int $step = 1;
 
     public string $source = 'google_maps';
+
+    public string $scrapingMethod = 'playwright';
 
     public string $locationMode = 'city';
 
@@ -56,6 +61,21 @@ new #[Title('Generate leads')] class extends Component {
     public function sources(): array
     {
         return LeadSource::cases();
+    }
+
+    #[Computed]
+    public function totalSteps(): int
+    {
+        return self::TOTAL_STEPS;
+    }
+
+    /**
+     * @return list<ScrapingMethod>
+     */
+    #[Computed]
+    public function scrapingMethods(): array
+    {
+        return ScrapingMethod::cases();
     }
 
     /**
@@ -96,7 +116,7 @@ new #[Title('Generate leads')] class extends Component {
     {
         $this->validateStep();
 
-        $this->step = min($this->step + 1, 3);
+        $this->step = min($this->step + 1, self::TOTAL_STEPS);
     }
 
     public function back(): void
@@ -190,14 +210,15 @@ new #[Title('Generate leads')] class extends Component {
 
     public function submit(): void
     {
-        $this->validateStep(1);
-        $this->validateStep(2);
-        $this->validateStep(3);
+        foreach (range(1, self::TOTAL_STEPS) as $step) {
+            $this->validateStep($step);
+        }
 
         $mode = LocationMode::from($this->locationMode);
 
         $leadRequest = Auth::user()->leadRequests()->create([
             'source' => $this->source,
+            'scraping_method' => $this->scrapingMethod,
             'location_mode' => $mode,
             'locations' => $mode->usesPlaceNames() ? $this->parsedLocations() : null,
             'latitude' => $mode === LocationMode::Geofence ? $this->latitude : null,
@@ -243,8 +264,11 @@ new #[Title('Generate leads')] class extends Component {
     {
         match ($step ?? $this->step) {
             1 => $this->validateSource(),
-            2 => $this->validateLocation(),
-            3 => $this->validate([
+            2 => $this->validate([
+                'scrapingMethod' => ['required', Rule::enum(ScrapingMethod::class)],
+            ], ['scrapingMethod.enum' => __('Choose Playwright or Puppeteer.')]),
+            3 => $this->validateLocation(),
+            4 => $this->validate([
                 'categories' => ['required', 'array', 'min:1'],
                 'categories.*' => [Rule::enum(BusinessCategory::class)],
                 'maxResults' => ['required', 'integer', 'min:1', 'max:1000'],
@@ -305,10 +329,10 @@ new #[Title('Generate leads')] class extends Component {
 <section class="mx-auto w-full max-w-3xl space-y-6">
     <div>
         <flux:heading size="xl" level="1">{{ __('Generate leads') }}</flux:heading>
-        <flux:subheading>{{ __('Step :step of 3', ['step' => $step]) }}</flux:subheading>
+        <flux:subheading>{{ __('Step :step of :total', ['step' => $step, 'total' => $this->totalSteps]) }}</flux:subheading>
     </div>
 
-    <flux:progress :value="($step / 3) * 100" />
+    <flux:progress :value="($step / $this->totalSteps) * 100" />
 
     <form wire:submit="submit" class="space-y-6">
         @if ($step === 1)
@@ -374,6 +398,26 @@ new #[Title('Generate leads')] class extends Component {
         @endif
 
         @if ($step === 2)
+            <flux:radio.group wire:model.live="scrapingMethod" :label="__('Scraping method')">
+                @foreach ($this->scrapingMethods as $method)
+                    <flux:radio
+                        wire:key="method-{{ $method->value }}"
+                        :value="$method->value"
+                        :label="$method->label()"
+                        :description="$method->description()"
+                    />
+                @endforeach
+            </flux:radio.group>
+            <flux:error name="scrapingMethod" />
+
+            <flux:callout icon="information-circle">
+                <flux:callout.text>
+                    {{ __('The method you choose is the one used to scrape this request. Both give the same lead data; use the other one if a site works better with it.') }}
+                </flux:callout.text>
+            </flux:callout>
+        @endif
+
+        @if ($step === 3)
             <flux:radio.group wire:model.live="locationMode" :label="__('How would you like to get the leads?')">
                 @foreach ($this->locationModes as $mode)
                     <flux:radio wire:key="mode-{{ $mode->value }}" :value="$mode->value" :label="$mode->label()" />
@@ -447,7 +491,7 @@ new #[Title('Generate leads')] class extends Component {
             @endif
         @endif
 
-        @if ($step === 3)
+        @if ($step === 4)
             <flux:checkbox.group wire:model="categories" :label="__('Business categories')">
                 <div class="grid gap-2 sm:grid-cols-2">
                     @foreach ($this->businessCategories as $category)
@@ -486,7 +530,7 @@ new #[Title('Generate leads')] class extends Component {
                 <span></span>
             @endif
 
-            @if ($step < 3)
+            @if ($step < $this->totalSteps)
                 <flux:button type="button" variant="primary" wire:click="next">{{ __('Next') }}</flux:button>
             @else
                 <flux:button type="submit" variant="primary" icon="sparkles" data-test="generate-leads-button">

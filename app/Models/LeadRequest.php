@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\LeadRequestStatus;
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
+use App\Enums\ScrapingMethod;
 use Database\Factories\LeadRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'user_id',
     'source',
+    'scraping_method',
     'location_mode',
     'locations',
     'latitude',
@@ -42,6 +44,7 @@ class LeadRequest extends Model
     {
         return [
             'source' => LeadSource::class,
+            'scraping_method' => ScrapingMethod::class,
             'location_mode' => LocationMode::class,
             'status' => LeadRequestStatus::class,
             'locations' => 'array',

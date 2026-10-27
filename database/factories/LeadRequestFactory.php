@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Enums\LeadRequestStatus;
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
+use App\Enums\ScrapingMethod;
 use App\Models\LeadRequest;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -24,6 +25,7 @@ class LeadRequestFactory extends Factory
         return [
             'user_id' => User::factory(),
             'source' => LeadSource::GoogleMaps,
+            'scraping_method' => ScrapingMethod::Playwright,
             'location_mode' => LocationMode::City,
             'locations' => [fake()->city()],
             'categories' => ['Dentist'],
