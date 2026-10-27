@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'radius_km',
     'categories',
     'max_results',
+    'only_with_contact',
     'status',
     'total_leads',
     'error',
@@ -48,6 +49,7 @@ class LeadRequest extends Model
             'latitude' => 'float',
             'longitude' => 'float',
             'radius_km' => 'float',
+            'only_with_contact' => 'boolean',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
         ];

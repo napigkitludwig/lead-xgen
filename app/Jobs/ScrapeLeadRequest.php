@@ -8,6 +8,7 @@ use App\Enums\LocationMode;
 use App\Models\LeadRequest;
 use App\Services\FacebookScraper;
 use App\Services\GoogleMapsScraper;
+use App\Support\AddressParser;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -52,7 +53,12 @@ class ScrapeLeadRequest implements ShouldQueue
                     continue;
                 }
 
+                if ($this->leadRequest->only_with_contact && (empty($lead['email']) || empty($lead['phone']))) {
+                    continue;
+                }
+
                 $lead['category'] ??= $target['category'];
+                $address = AddressParser::parse($lead['location'] ?? null, $target['location']);
                 $lead['location'] ??= $target['location'];
 
                 $key = $this->duplicateKey($lead);
@@ -72,6 +78,7 @@ class ScrapeLeadRequest implements ShouldQueue
                     'category' => $lead['category'] ?? null,
                     'website' => $lead['website'] ?? null,
                     'location' => $lead['location'] ?? null,
+                    ...$address,
                     'source_url' => $lead['source_url'] ?? null,
                 ]);
             }

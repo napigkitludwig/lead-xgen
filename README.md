@@ -71,7 +71,7 @@ If Vite's default port is busy it picks the next free one automatically; no acti
 5. The request is queued and scraped by Playwright in the background. Open **Lead Requests** to see every request with its date and time, status and lead count.
 6. Open a request to see its leads, then click **Export to Excel** or **Export to Google Sheets**.
 
-Each lead has a business name, email, phone, first name, last name, category, website and location. Phone, website and address come from Google Maps. Email and contact name are looked up on the business's own website, so they are filled in only when that site shows them.
+Each lead has a business name, email, phone, first name, last name, category, website, location, town, zip code and country. Leads that have both an email and a phone number are listed (and exported) first; tick "Only keep leads that have both an email and a phone number" when generating to drop the rest. The Location is a link that opens the business in Google Maps, in the table and in the exports. Town, zip code and country are read from the address, so they can be empty or occasionally wrong for unusual address formats. Phone, website and address come from Google Maps. Email and contact name are looked up on the business's own website, so they are filled in only when that site shows them.
 
 ### Facebook setup
 

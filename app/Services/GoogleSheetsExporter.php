@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exports\LeadsExport;
 use App\Models\Lead;
 use App\Models\LeadRequest;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -42,11 +43,15 @@ class GoogleSheetsExporter
             ->throw()
             ->json();
 
+        $leads = $leadRequest->leads()->completeFirst()->get();
+
         Http::withToken($token)
             ->put("https://sheets.googleapis.com/v4/spreadsheets/{$sheet['spreadsheetId']}/values/A1", [
-                'values' => $this->rows($leadRequest),
+                'values' => $this->rows($leads),
             ])
             ->throw();
+
+        $this->linkLocations($token, $sheet, $leads);
 
         Http::withToken($token)
             ->post("https://www.googleapis.com/drive/v3/files/{$sheet['spreadsheetId']}/permissions?sendNotificationEmail=false", [
@@ -65,19 +70,54 @@ class GoogleSheetsExporter
     }
 
     /**
+     * @param  Collection<int, Lead>  $leads
      * @return list<list<?string>>
      */
-    private function rows(LeadRequest $leadRequest): array
+    private function rows(Collection $leads): array
     {
-        $export = new LeadsExport($leadRequest);
+        $export = new LeadsExport(new LeadRequest);
 
-        return $leadRequest->leads()
-            ->orderBy('id')
-            ->get()
+        return $leads
             ->map(fn (Lead $lead) => $export->map($lead))
             ->prepend($export->headings())
             ->values()
             ->all();
+    }
+
+    /**
+     * Turn each Location cell into a link to its Google Maps page.
+     *
+     * @param  array<string, mixed>  $sheet
+     * @param  Collection<int, Lead>  $leads
+     */
+    private function linkLocations(string $token, array $sheet, Collection $leads): void
+    {
+        $rows = $leads->map(fn (Lead $lead) => ['values' => [array_filter([
+            'userEnteredValue' => ['stringValue' => (string) $lead->location],
+            'textFormatRuns' => $lead->maps_url && $lead->location
+                ? [['startIndex' => 0, 'format' => ['link' => ['uri' => $lead->maps_url]]]]
+                : null,
+        ])]])->values()->all();
+
+        if ($rows === []) {
+            return;
+        }
+
+        Http::withToken($token)
+            ->post("https://sheets.googleapis.com/v4/spreadsheets/{$sheet['spreadsheetId']}:batchUpdate", [
+                'requests' => [[
+                    'updateCells' => [
+                        'rows' => $rows,
+                        'fields' => 'userEnteredValue,textFormatRuns',
+                        'start' => [
+                            'sheetId' => $sheet['sheets'][0]['properties']['sheetId'] ?? 0,
+                            'rowIndex' => 1,
+                            'columnIndex' => 7,
+                        ],
+                    ],
+                ]],
+            ])
+            ->throw();
     }
 
     private function accessToken(): string

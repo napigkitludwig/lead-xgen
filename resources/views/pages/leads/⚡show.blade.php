@@ -63,7 +63,7 @@ new #[Title('Leads')] class extends Component {
     #[Computed]
     public function leads(): LengthAwarePaginator
     {
-        return $this->leadRequest->leads()->orderBy('id')->paginate(25);
+        return $this->leadRequest->leads()->completeFirst()->paginate(25);
     }
 }; ?>
 
@@ -137,6 +137,9 @@ new #[Title('Leads')] class extends Component {
             <flux:table.column>{{ __('Category') }}</flux:table.column>
             <flux:table.column>{{ __('Website') }}</flux:table.column>
             <flux:table.column>{{ __('Location') }}</flux:table.column>
+            <flux:table.column>{{ __('Town') }}</flux:table.column>
+            <flux:table.column>{{ __('Zip code') }}</flux:table.column>
+            <flux:table.column>{{ __('Country') }}</flux:table.column>
         </flux:table.columns>
 
         <flux:table.rows>
@@ -153,11 +156,20 @@ new #[Title('Leads')] class extends Component {
                             <a href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="underline">{{ $lead->website }}</a>
                         @endif
                     </flux:table.cell>
-                    <flux:table.cell class="max-w-56 truncate">{{ $lead->location }}</flux:table.cell>
+                    <flux:table.cell class="max-w-56 truncate">
+                        @if ($lead->maps_url && $lead->location)
+                            <a href="{{ $lead->maps_url }}" target="_blank" rel="noopener noreferrer" class="underline" title="{{ __('Open in Google Maps') }}">{{ $lead->location }}</a>
+                        @else
+                            {{ $lead->location }}
+                        @endif
+                    </flux:table.cell>
+                    <flux:table.cell>{{ $lead->town }}</flux:table.cell>
+                    <flux:table.cell>{{ $lead->zip_code }}</flux:table.cell>
+                    <flux:table.cell>{{ $lead->country }}</flux:table.cell>
                 </flux:table.row>
             @empty
                 <flux:table.row>
-                    <flux:table.cell colspan="8" class="text-center">{{ __('No leads yet.') }}</flux:table.cell>
+                    <flux:table.cell colspan="11" class="text-center">{{ __('No leads yet.') }}</flux:table.cell>
                 </flux:table.row>
             @endforelse
         </flux:table.rows>

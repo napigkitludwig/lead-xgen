@@ -28,6 +28,9 @@ class LeadFactory extends Factory
             'category' => 'Dentist',
             'website' => fake()->url(),
             'location' => fake()->address(),
+            'town' => fake()->city(),
+            'zip_code' => fake()->postcode(),
+            'country' => fake()->country(),
             'source_url' => fake()->url(),
         ];
     }

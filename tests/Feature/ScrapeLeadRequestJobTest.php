@@ -100,6 +100,44 @@ class ScrapeLeadRequestJobTest extends TestCase
         ]);
     }
 
+    public function test_it_saves_town_zip_code_and_country(): void
+    {
+        $leadRequest = LeadRequest::factory()->create(['locations' => ['Makati, Philippines']]);
+
+        $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
+            $mock->shouldReceive('scrape')->once()->andReturn([
+                [...$this->place('Bright Smile', '111'), 'location' => '1408 Kalayaan Ave, Poblacion, Makati City, 1210 Metro Manila'],
+            ]);
+        });
+
+        (new ScrapeLeadRequest($leadRequest))->handle();
+
+        $this->assertDatabaseHas('leads', [
+            'business_name' => 'Bright Smile',
+            'town' => 'Makati City',
+            'zip_code' => '1210',
+            'country' => 'Philippines',
+        ]);
+    }
+
+    public function test_it_can_keep_only_leads_with_email_and_phone(): void
+    {
+        $leadRequest = LeadRequest::factory()->create(['only_with_contact' => true]);
+
+        $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
+            $mock->shouldReceive('scrape')->once()->andReturn([
+                $this->place('Complete Dental', '111'),
+                $this->place('No Phone Dental', null),
+                [...$this->place('No Email Dental', '222'), 'email' => null],
+            ]);
+        });
+
+        (new ScrapeLeadRequest($leadRequest))->handle();
+
+        $this->assertDatabaseCount('leads', 1);
+        $this->assertDatabaseHas('leads', ['business_name' => 'Complete Dental']);
+    }
+
     public function test_request_fails_when_every_search_errors(): void
     {
         $leadRequest = LeadRequest::factory()->create();

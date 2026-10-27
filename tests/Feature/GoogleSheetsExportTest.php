@@ -58,6 +58,7 @@ class GoogleSheetsExportTest extends TestCase
                 'spreadsheetUrl' => 'https://docs.google.com/spreadsheets/d/abc123/edit',
             ]),
             'sheets.googleapis.com/v4/spreadsheets/abc123/values/A1' => Http::response([]),
+            'sheets.googleapis.com/v4/spreadsheets/abc123:batchUpdate' => Http::response([]),
             'www.googleapis.com/drive/v3/files/abc123/permissions*' => Http::response([]),
         ]);
 
@@ -75,7 +76,11 @@ class GoogleSheetsExportTest extends TestCase
 
         Http::assertSent(fn (Request $request) => str_contains($request->url(), '/values/A1')
             && count($request['values']) === 3
-            && $request['values'][0][0] === 'Business Name');
+            && $request['values'][0][0] === 'Business Name'
+            && $request['values'][0][8] === 'Town');
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), ':batchUpdate')
+            && count($request['requests'][0]['updateCells']['rows']) === 2
+            && $request['requests'][0]['updateCells']['start']['columnIndex'] === 7);
         Http::assertSent(fn (Request $request) => str_contains($request->url(), '/permissions')
             && $request['emailAddress'] === 'owner@gmail.com'
             && $request['role'] === 'writer');

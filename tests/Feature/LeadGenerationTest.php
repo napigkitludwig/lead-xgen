@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
+use App\Exports\LeadsExport;
 use App\Jobs\ScrapeLeadRequest;
 use App\Models\Lead;
 use App\Models\LeadRequest;
@@ -139,6 +140,65 @@ class LeadGenerationTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->get(route('leads.export', $leadRequest))
             ->assertForbidden();
+    }
+
+    public function test_leads_with_email_and_phone_are_listed_and_exported_first(): void
+    {
+        $leadRequest = LeadRequest::factory()->completed()->create();
+        Lead::factory()->for($leadRequest)->create(['business_name' => 'No Email', 'email' => null]);
+        Lead::factory()->for($leadRequest)->create(['business_name' => 'No Phone', 'phone' => null]);
+        Lead::factory()->for($leadRequest)->create(['business_name' => 'Complete']);
+
+        $names = $leadRequest->leads()->completeFirst()->pluck('business_name')->all();
+        $this->assertSame('Complete', $names[0]);
+
+        $exported = (new LeadsExport($leadRequest))->query()->pluck('business_name')->all();
+        $this->assertSame('Complete', $exported[0]);
+    }
+
+    public function test_location_links_to_google_maps(): void
+    {
+        $user = User::factory()->create();
+        $leadRequest = LeadRequest::factory()->for($user)->completed()->create();
+        $placeUrl = 'https://www.google.com/maps/place/Ora+Dental/data=!3d1!4d2';
+        $withPlace = Lead::factory()->for($leadRequest)->create(['source_url' => $placeUrl, 'location' => '1 Main St']);
+        $withoutPlace = Lead::factory()->for($leadRequest)->create([
+            'source_url' => 'https://facebook.com/clinic',
+            'business_name' => 'Cebu Braces',
+            'location' => '2 Side St, Cebu',
+        ]);
+
+        $this->assertSame($placeUrl, $withPlace->maps_url);
+        $this->assertSame(
+            'https://www.google.com/maps/search/?api=1&query='.rawurlencode('Cebu Braces, 2 Side St, Cebu'),
+            $withoutPlace->maps_url,
+        );
+
+        Livewire::actingAs($user)
+            ->test('pages::leads.show', ['leadRequest' => $leadRequest])
+            ->assertSeeHtml('href="'.e($placeUrl).'"');
+    }
+
+    public function test_export_includes_town_zip_country_and_maps_link(): void
+    {
+        $leadRequest = LeadRequest::factory()->completed()->create();
+        $lead = Lead::factory()->for($leadRequest)->create([
+            'town' => 'Makati City',
+            'zip_code' => '1210',
+            'country' => 'Philippines',
+            'source_url' => 'https://www.google.com/maps/place/x',
+        ]);
+
+        $export = new LeadsExport($leadRequest);
+
+        $this->assertSame(
+            ['Location', 'Town', 'Zip Code', 'Country', 'Google Maps Link'],
+            array_slice($export->headings(), 7),
+        );
+        $this->assertSame(
+            [$lead->location, 'Makati City', '1210', 'Philippines', 'https://www.google.com/maps/place/x'],
+            array_slice($export->map($lead), 7),
+        );
     }
 
     public function test_owner_can_export_leads_to_excel(): void

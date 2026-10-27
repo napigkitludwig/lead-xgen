@@ -36,6 +36,8 @@ new #[Title('Generate leads')] class extends Component {
 
     public int $maxResults = 20;
 
+    public bool $onlyWithContact = false;
+
     /**
      * @return list<LeadSource>
      */
@@ -120,6 +122,7 @@ new #[Title('Generate leads')] class extends Component {
             'radius_km' => $mode === LocationMode::Geofence ? $this->radiusInKilometers() : null,
             'categories' => $this->categories,
             'max_results' => $this->maxResults,
+            'only_with_contact' => $this->onlyWithContact,
         ]);
 
         ScrapeLeadRequest::dispatch($leadRequest);
@@ -328,6 +331,12 @@ new #[Title('Generate leads')] class extends Component {
                 :description="__('Each category and place is one search. Higher numbers take longer.')"
             />
             <flux:error name="maxResults" />
+
+            <flux:checkbox
+                wire:model="onlyWithContact"
+                :label="__('Only keep leads that have both an email and a phone number')"
+                :description="__('Leads with both are always listed first. Turn this on to drop the rest.')"
+            />
         @endif
 
         <div class="flex justify-between">
