@@ -29,7 +29,7 @@ class ScrapeLeadRequest implements ShouldQueue
     public function handle(): void
     {
         $scraper = match ($this->leadRequest->source) {
-            LeadSource::Facebook => app(FacebookScraper::class),
+            LeadSource::Facebook => app(FacebookScraper::class)->forUser($this->leadRequest->user),
             default => app(GoogleMapsScraper::class),
         };
 

@@ -4,6 +4,8 @@ use App\Enums\BusinessCategory;
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
 use App\Jobs\ScrapeLeadRequest;
+use App\Jobs\ConnectFacebookAccount;
+use App\Services\FacebookSession;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -37,6 +39,15 @@ new #[Title('Generate leads')] class extends Component {
     public int $maxResults = 20;
 
     public bool $onlyWithContact = false;
+
+    /** Whether the user's Facebook session is logged in; null until checked. */
+    public ?bool $facebookConnected = null;
+
+    public ?string $facebookAccount = null;
+
+    public bool $facebookConnecting = false;
+
+    public ?string $facebookError = null;
 
     /**
      * @return list<LeadSource>
@@ -103,6 +114,78 @@ new #[Title('Generate leads')] class extends Component {
         if ($this->locationMode === LocationMode::Geofence->value && ! (LeadSource::tryFrom($this->source)?->supportsGeofence() ?? false)) {
             $this->locationMode = LocationMode::City->value;
         }
+
+        if ($this->source === LeadSource::Facebook->value) {
+            $this->checkFacebook();
+        }
+    }
+
+    /**
+     * Look for a logged-in Facebook session saved for the current user.
+     */
+    public function checkFacebook(bool $fresh = false): void
+    {
+        $this->facebookError = null;
+
+        try {
+            $status = app(FacebookSession::class)->status(Auth::user(), $fresh);
+        } catch (\Throwable $exception) {
+            $this->facebookConnected = false;
+            $this->facebookAccount = null;
+            $this->facebookError = __('Could not check Facebook: :message', ['message' => $exception->getMessage()]);
+
+            return;
+        }
+
+        $this->facebookConnected = $status['connected'];
+        $this->facebookAccount = $status['name'];
+    }
+
+    /**
+     * Open a Facebook login window (on the machine running the app) to pick the account.
+     */
+    public function connectFacebook(): void
+    {
+        $session = app(FacebookSession::class);
+
+        $session->setConnectionState(Auth::user(), 'waiting');
+        ConnectFacebookAccount::dispatch(Auth::user());
+
+        $this->facebookConnecting = true;
+        $this->facebookError = null;
+    }
+
+    public function pollFacebookConnection(): void
+    {
+        $session = app(FacebookSession::class);
+        $state = $session->connectionState(Auth::user());
+
+        if ($state === 'done') {
+            $this->facebookConnecting = false;
+            $session->clearConnectionState(Auth::user());
+            $this->checkFacebook();
+        } elseif ($state === null || str_starts_with($state, 'failed')) {
+            $this->facebookConnecting = false;
+            $this->facebookError = $state === null
+                ? __('The Facebook login timed out. Try again.')
+                : __('Facebook login failed: :message', ['message' => trim(substr($state, 7))]);
+            $session->clearConnectionState(Auth::user());
+        }
+    }
+
+    public function cancelFacebookConnect(): void
+    {
+        app(FacebookSession::class)->clearConnectionState(Auth::user());
+        $this->facebookConnecting = false;
+    }
+
+    public function disconnectFacebook(): void
+    {
+        app(FacebookSession::class)->disconnect(Auth::user());
+
+        $this->facebookConnected = false;
+        $this->facebookAccount = null;
+        $this->facebookConnecting = false;
     }
 
     public function submit(): void
@@ -159,9 +242,7 @@ new #[Title('Generate leads')] class extends Component {
     private function validateStep(?int $step = null): void
     {
         match ($step ?? $this->step) {
-            1 => $this->validate([
-                'source' => ['required', Rule::enum(LeadSource::class)->only([LeadSource::GoogleMaps, LeadSource::Facebook])],
-            ], ['source.enum' => __('This source is not available yet.')]),
+            1 => $this->validateSource(),
             2 => $this->validateLocation(),
             3 => $this->validate([
                 'categories' => ['required', 'array', 'min:1'],
@@ -169,6 +250,23 @@ new #[Title('Generate leads')] class extends Component {
                 'maxResults' => ['required', 'integer', 'min:1', 'max:1000'],
             ], ['categories.min' => __('Select at least one business category.')]),
         };
+    }
+
+    private function validateSource(): void
+    {
+        $this->validate([
+            'source' => ['required', Rule::enum(LeadSource::class)->only([LeadSource::GoogleMaps, LeadSource::Facebook])],
+        ], ['source.enum' => __('This source is not available yet.')]);
+
+        if ($this->source === LeadSource::Facebook->value) {
+            $this->checkFacebook();
+
+            if (! $this->facebookConnected) {
+                throw ValidationException::withMessages([
+                    'source' => __('Log in to a Facebook account first, then continue.'),
+                ]);
+            }
+        }
     }
 
     private function validateLocation(): void
@@ -226,9 +324,51 @@ new #[Title('Generate leads')] class extends Component {
             </flux:radio.group>
             <flux:error name="source" />
 
+            @if ($source === 'facebook')
+                <div class="space-y-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-700" @if ($facebookConnecting) wire:poll.3s="pollFacebookConnection" @endif>
+                    <div wire:loading wire:target="source,checkFacebook" class="text-sm text-zinc-500">
+                        {{ __('Checking for a logged-in Facebook session…') }}
+                    </div>
+
+                    <div wire:loading.remove wire:target="source,checkFacebook" class="space-y-3">
+                        @if ($facebookConnecting)
+                            <flux:callout icon="arrow-top-right-on-square">
+                                <flux:callout.text>
+                                    {{ __('A Facebook login window was opened on the computer running this app. Log in there; this page updates by itself.') }}
+                                </flux:callout.text>
+                            </flux:callout>
+                            <flux:button type="button" size="sm" wire:click="cancelFacebookConnect">{{ __('Cancel') }}</flux:button>
+                        @elseif ($facebookConnected)
+                            <flux:callout variant="success" icon="check-circle">
+                                <flux:callout.text>
+                                    {{ $facebookAccount ? __('Logged in to Facebook as :name. This account will be used.', ['name' => $facebookAccount]) : __('A logged-in Facebook account was found and will be used.') }}
+                                </flux:callout.text>
+                            </flux:callout>
+                            <div class="flex flex-wrap gap-2">
+                                <flux:button type="button" size="sm" wire:click="connectFacebook">{{ __('Use a different account') }}</flux:button>
+                                <flux:button type="button" size="sm" variant="ghost" wire:click="disconnectFacebook">{{ __('Disconnect') }}</flux:button>
+                            </div>
+                        @else
+                            <flux:callout variant="warning" icon="exclamation-triangle">
+                                <flux:callout.text>
+                                    {{ __('No logged-in Facebook session was found. Log in to the Facebook account you want to use.') }}
+                                </flux:callout.text>
+                            </flux:callout>
+                            <flux:button type="button" size="sm" variant="primary" icon="arrow-top-right-on-square" wire:click="connectFacebook" data-test="connect-facebook-button">
+                                {{ __('Log in to Facebook') }}
+                            </flux:button>
+                        @endif
+
+                        @if ($facebookError)
+                            <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $facebookError }}</flux:text>
+                        @endif
+                    </div>
+                </div>
+            @endif
+
             <flux:callout icon="information-circle">
                 <flux:callout.text>
-                    {{ __('Google Maps is the most reliable source for dental clinics. Facebook needs a saved Facebook login session (see the README) and does not support geofence searches. LinkedIn restricts automated access, so it is not enabled.') }}
+                    {{ __('Google Maps is the most reliable source for dental clinics. Facebook uses your own Facebook login, saved for your user only, and does not support geofence searches. LinkedIn restricts automated access, so it is not enabled.') }}
                 </flux:callout.text>
             </flux:callout>
         @endif

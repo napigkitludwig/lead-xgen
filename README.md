@@ -75,13 +75,13 @@ Each lead has a business name, email, phone, first name, last name, category, we
 
 ### Facebook setup
 
-Facebook only shows page search results to logged-in visitors, so save a login session once:
+Facebook only shows page search results to logged-in visitors, and every user connects their own Facebook account (there is no shared or fixed account):
 
-```bash
-node resources/scrapers/facebook-login.mjs
-```
+1. In **Generate Leads**, choose **Facebook**. The app checks whether you already have a logged-in Facebook session saved. If so, it shows the account name and that account is used.
+2. If there is none, click **Log in to Facebook**. A browser window opens on the computer running the app; log in there and the page updates by itself.
+3. **Use a different account** and **Disconnect** let you switch or remove the saved login. Each user's session is stored separately under `storage/app/private/facebook-sessions/`.
 
-A browser window opens. Log in, and the session is saved to `storage/app/private/facebook-session.json` (change the location with `FACEBOOK_SESSION_FILE` in `.env`). Use a dedicated Facebook account, because automated access can get an account restricted. Facebook searches use place names, so the geofence option is not available for this source. Redo this step if the session expires.
+Notes: a website cannot read your everyday browser's Facebook login (browsers block that), so the app keeps its own saved session per user. The login window opens on the machine running the app, and the queue worker must be running (`composer run dev` starts it). Automated access can get a Facebook account restricted, so choose the account carefully. Facebook searches use place names, so the geofence option is not available for this source.
 
 ### Google Sheets setup
 

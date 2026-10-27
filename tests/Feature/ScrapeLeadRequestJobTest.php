@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Enums\LeadRequestStatus;
 use App\Enums\LeadSource;
+use App\Jobs\ConnectFacebookAccount;
 use App\Jobs\ScrapeLeadRequest;
 use App\Models\LeadRequest;
+use App\Models\User;
 use App\Services\FacebookScraper;
 use App\Services\GoogleMapsScraper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,6 +35,14 @@ class ScrapeLeadRequestJobTest extends TestCase
             'last_name' => null,
             'source_url' => $mapsUrl,
         ];
+    }
+
+    public function test_the_queue_does_not_release_a_job_that_is_still_scraping(): void
+    {
+        $retryAfter = config('queue.connections.database.retry_after');
+
+        $this->assertGreaterThan((new ScrapeLeadRequest(LeadRequest::factory()->make()))->timeout, $retryAfter);
+        $this->assertGreaterThan((new ConnectFacebookAccount(User::factory()->make()))->timeout, $retryAfter);
     }
 
     public function test_it_saves_unique_leads_and_completes_the_request(): void
@@ -84,6 +94,7 @@ class ScrapeLeadRequestJobTest extends TestCase
         ]);
 
         $this->mock(FacebookScraper::class, function (MockInterface $mock) {
+            $mock->shouldReceive('forUser')->once()->andReturnSelf();
             $mock->shouldReceive('scrape')
                 ->once()
                 ->withArgs(fn (string $url) => str_starts_with($url, 'https://www.facebook.com/search/pages/?q=Orthodontist%20in%20Cebu%20City'))

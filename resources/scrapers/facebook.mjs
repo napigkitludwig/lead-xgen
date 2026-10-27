@@ -5,7 +5,7 @@
  *   job: { searchUrl: string, maxResults: number, enrichWebsites: boolean, storageState: string }
  *
  * Facebook only shows page search results to logged-in visitors, so a saved
- * session is required. Create one with: node resources/scrapers/facebook-login.mjs
+ * session is required. Each user connects their own account from the app (Generate Leads > Facebook).
  *
  * Prints a JSON array of leads to stdout. Progress and errors go to stderr.
  */
@@ -31,7 +31,7 @@ const NAME_PATTERN = /\bDr\.?\s+([A-Z][a-z'’-]+)\s+([A-Z][a-z'’-]+)/;
 const RESERVED_PATHS = /^\/(search|login|help|groups|events|watch|marketplace|photo|photos|reel|reels|share|policies|privacy|pages|public|hashtag|stories|gaming|ads|business|recover|checkpoint)\b/i;
 
 if (!job.storageState || !existsSync(job.storageState)) {
-    fail('Facebook session not found. Run "node resources/scrapers/facebook-login.mjs" once to log in and save a session.');
+    fail('No Facebook account is connected. Open Generate Leads, choose Facebook and click "Log in to Facebook".');
 }
 
 function pageUrl(href) {
@@ -70,7 +70,7 @@ async function assertLoggedIn(page) {
     const blocked = page.url().includes('/login') || page.url().includes('/checkpoint');
 
     if (blocked || (await page.locator('input[name="pass"]').count()) > 0) {
-        fail('Facebook session expired or blocked. Run "node resources/scrapers/facebook-login.mjs" again.');
+        fail('The Facebook session expired or was blocked. Open Generate Leads, choose Facebook and log in again.');
     }
 }
 

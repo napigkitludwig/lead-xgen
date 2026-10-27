@@ -34,7 +34,7 @@ return [
     ],
 
     'facebook' => [
-        'session' => env('FACEBOOK_SESSION_FILE') ?: storage_path('app/private/facebook-session.json'),
+        'sessions_path' => storage_path('app/private/facebook-sessions'),
     ],
 
     'google_sheets' => [

@@ -1,30 +1,66 @@
 /**
- * One-time helper: opens a visible browser so you can log in to Facebook,
- * then saves the session for the scraper.
+ * Opens a visible browser window so the user can log in to their own Facebook
+ * account, then saves that session for the scraper.
  *
- * Usage: node resources/scrapers/facebook-login.mjs [output-file]
- * Default output: storage/app/private/facebook-session.json
+ * Usage: node facebook-login.mjs <session-file>
+ * Prints {"id": "...", "name": "..."} to stdout on success.
  *
- * Use a dedicated Facebook account. Automated access can get an account restricted.
+ * Automated access can get a Facebook account restricted, so use an account you
+ * are comfortable using for this.
  */
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { loggedInUserId, readAccountName } from './facebook-session.mjs';
 
-const output = resolve(process.argv[2] ?? 'storage/app/private/facebook-session.json');
+const output = process.argv[2] ? resolve(process.argv[2]) : null;
+
+if (!output) {
+    process.stderr.write('Usage: node facebook-login.mjs <session-file>\n');
+    process.exit(2);
+}
+
 mkdirSync(dirname(output), { recursive: true });
 
+const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const browser = await chromium.launch({ headless: false });
-const context = await browser.newContext({ locale: 'en-US' });
-const page = await context.newPage();
 
-await page.goto('https://www.facebook.com/login');
-console.log('Log in to Facebook in the opened window (you have 5 minutes)...');
+try {
+    const context = await browser.newContext({ locale: 'en-US', viewport: null });
+    const page = await context.newPage();
 
-await page.waitForURL((url) => !/login|checkpoint|two_step/.test(url.pathname), { timeout: 5 * 60 * 1000 });
-await page.waitForTimeout(3000);
+    await page.goto('https://www.facebook.com/login');
 
-await context.storageState({ path: output });
-console.log(`Session saved to ${output}`);
+    const deadline = Date.now() + LOGIN_TIMEOUT_MS;
+    let id = null;
 
-await browser.close();
+    while (!id && Date.now() < deadline) {
+        if (page.isClosed()) {
+            throw new Error('The Facebook login window was closed before logging in.');
+        }
+
+        id = await loggedInUserId(context).catch(() => null);
+
+        if (!id) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+    }
+
+    if (!id) {
+        throw new Error('Timed out waiting for the Facebook login.');
+    }
+
+    await page.waitForTimeout(3000);
+
+    const name = await readAccountName(page);
+
+    await context.storageState({ path: output });
+    await new Promise((resolve) => process.stdout.write(JSON.stringify({ id, name }), resolve));
+} catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 2;
+} finally {
+    await Promise.race([browser.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10000))]);
+}
+
+process.exit(process.exitCode ?? 0);

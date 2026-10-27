@@ -5,13 +5,16 @@ namespace Tests\Feature;
 use App\Enums\LeadSource;
 use App\Enums\LocationMode;
 use App\Exports\LeadsExport;
+use App\Jobs\ConnectFacebookAccount;
 use App\Jobs\ScrapeLeadRequest;
 use App\Models\Lead;
 use App\Models\LeadRequest;
 use App\Models\User;
+use App\Services\FacebookSession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+use Mockery\MockInterface;
 use Tests\TestCase;
 
 class LeadGenerationTest extends TestCase
@@ -92,18 +95,92 @@ class LeadGenerationTest extends TestCase
             ->assertSet('step', 1);
     }
 
-    public function test_facebook_is_selectable_but_cannot_use_a_geofence(): void
+    public function test_facebook_requires_a_logged_in_account(): void
     {
+        $this->mockFacebookStatus(false);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test('pages::leads.create')
+            ->set('source', 'facebook')
+            ->assertSet('facebookConnected', false)
+            ->call('next')
+            ->assertHasErrors(['source'])
+            ->assertSet('step', 1);
+    }
+
+    public function test_facebook_uses_the_logged_in_account_that_was_found(): void
+    {
+        $this->mockFacebookStatus(true, 'Maria Santos');
+
+        Livewire::actingAs(User::factory()->create())
+            ->test('pages::leads.create')
+            ->set('source', 'facebook')
+            ->assertSet('facebookConnected', true)
+            ->assertSet('facebookAccount', 'Maria Santos')
+            ->assertSee('Maria Santos')
+            ->call('next')
+            ->assertHasNoErrors()
+            ->assertSet('step', 2);
+    }
+
+    public function test_facebook_cannot_use_a_geofence(): void
+    {
+        $this->mockFacebookStatus(true);
+
         Livewire::actingAs(User::factory()->create())
             ->test('pages::leads.create')
             ->set('source', 'facebook')
             ->call('next')
-            ->assertHasNoErrors()
             ->assertSet('step', 2)
             ->set('locationMode', 'geofence')
             ->call('next')
             ->assertHasErrors(['locationMode'])
             ->assertSet('step', 2);
+    }
+
+    public function test_log_in_button_opens_the_facebook_window_and_picks_up_the_result(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create();
+        $session = app(FacebookSession::class);
+
+        $component = Livewire::actingAs($user)
+            ->test('pages::leads.create')
+            ->set('source', 'facebook')
+            ->assertSet('facebookConnected', false)
+            ->call('connectFacebook')
+            ->assertSet('facebookConnecting', true);
+
+        Queue::assertPushed(ConnectFacebookAccount::class, fn ($job) => $job->user->is($user));
+
+        $this->mockFacebookStatus(true, 'Ana Cruz');
+        $session->setConnectionState($user, 'done');
+
+        $component->call('pollFacebookConnection')
+            ->assertSet('facebookConnecting', false)
+            ->assertSet('facebookConnected', true)
+            ->assertSet('facebookAccount', 'Ana Cruz');
+    }
+
+    public function test_a_failed_facebook_login_is_reported(): void
+    {
+        Queue::fake();
+        $user = User::factory()->create();
+
+        $component = Livewire::actingAs($user)->test('pages::leads.create')->call('connectFacebook');
+
+        app(FacebookSession::class)->setConnectionState($user, 'failed: The Facebook login window was closed before logging in.');
+
+        $component->call('pollFacebookConnection')
+            ->assertSet('facebookConnecting', false)
+            ->assertSet('facebookError', 'Facebook login failed: The Facebook login window was closed before logging in.');
+    }
+
+    private function mockFacebookStatus(bool $connected, ?string $name = null): void
+    {
+        $this->partialMock(FacebookSession::class, function (MockInterface $mock) use ($connected, $name) {
+            $mock->shouldReceive('status')->andReturn(['connected' => $connected, 'name' => $name]);
+        });
     }
 
     public function test_switching_to_facebook_resets_a_geofence_selection(): void
