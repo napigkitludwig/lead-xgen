@@ -15,6 +15,12 @@
                     <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="sparkles" :href="route('leads.create')" :current="request()->routeIs('leads.create')" wire:navigate>
+                        {{ __('Generate Leads') }}
+                    </flux:sidebar.item>
+                    <flux:sidebar.item icon="queue-list" :href="route('leads.index')" :current="request()->routeIs('leads.index', 'leads.show')" wire:navigate>
+                        {{ __('Lead Requests') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

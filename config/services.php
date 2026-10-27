@@ -28,6 +28,19 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'scraper' => [
+        'node' => env('SCRAPER_NODE_BINARY', 'node'),
+        'timeout' => (int) env('SCRAPER_TIMEOUT', 900),
+    ],
+
+    'facebook' => [
+        'session' => env('FACEBOOK_SESSION_FILE') ?: storage_path('app/private/facebook-session.json'),
+    ],
+
+    'google_sheets' => [
+        'credentials' => env('GOOGLE_SERVICE_ACCOUNT_JSON'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
