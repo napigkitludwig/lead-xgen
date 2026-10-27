@@ -28,6 +28,7 @@ class LeadRequestFactory extends Factory
             'locations' => [fake()->city()],
             'categories' => ['Dentist'],
             'max_results' => 20,
+            'only_with_contact' => false,
             'status' => LeadRequestStatus::Pending,
         ];
     }

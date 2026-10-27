@@ -166,7 +166,7 @@ new #[Title('Generate leads')] class extends Component {
             3 => $this->validate([
                 'categories' => ['required', 'array', 'min:1'],
                 'categories.*' => [Rule::enum(BusinessCategory::class)],
-                'maxResults' => ['required', 'integer', 'min:1', 'max:120'],
+                'maxResults' => ['required', 'integer', 'min:1', 'max:1000'],
             ], ['categories.min' => __('Select at least one business category.')]),
         };
     }
@@ -326,16 +326,16 @@ new #[Title('Generate leads')] class extends Component {
                 wire:model="maxResults"
                 type="number"
                 min="1"
-                max="120"
-                :label="__('Maximum results per search')"
-                :description="__('Each category and place is one search. Higher numbers take longer.')"
+                max="1000"
+                :label="__('Number of leads needed')"
+                :description="__('The search stops as soon as this many leads are found, so it does not keep running in the background.')"
             />
             <flux:error name="maxResults" />
 
             <flux:checkbox
                 wire:model="onlyWithContact"
-                :label="__('Only keep leads that have both an email and a phone number')"
-                :description="__('Leads with both are always listed first. Turn this on to drop the rest.')"
+                :label="__('Only count leads that have both an email and a phone number')"
+                :description="__('Leads with both are always listed first. Turn this on to skip the rest, so the leads you asked for all have an email and a phone.')"
             />
         @endif
 

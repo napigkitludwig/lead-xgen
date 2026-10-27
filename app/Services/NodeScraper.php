@@ -25,10 +25,19 @@ abstract class NodeScraper
     /**
      * Run the Playwright script for one search.
      *
+     * The script stops as soon as it has `$stopAfter` leads (only leads with both an
+     * email and a phone number when `$requireContact` is set), so it never keeps
+     * browsing once the wanted leads are found.
+     *
      * @return list<array{business_name: string, category: ?string, location: ?string, phone: ?string, website: ?string, email: ?string, first_name: ?string, last_name: ?string, source_url: ?string}>
      */
-    public function scrape(string $searchUrl, int $maxResults, bool $enrichWebsites = true): array
-    {
+    public function scrape(
+        string $searchUrl,
+        int $maxResults,
+        bool $enrichWebsites = true,
+        ?int $stopAfter = null,
+        bool $requireContact = false,
+    ): array {
         $process = new Process(
             [
                 config('services.scraper.node'),
@@ -38,6 +47,8 @@ abstract class NodeScraper
                     'searchUrl' => $searchUrl,
                     'maxResults' => $maxResults,
                     'enrichWebsites' => $enrichWebsites,
+                    'stopAfter' => $stopAfter,
+                    'requireContact' => $requireContact,
                 ], JSON_THROW_ON_ERROR),
             ],
             base_path(),

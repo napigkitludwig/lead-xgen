@@ -21,6 +21,9 @@ class ScrapeLeadRequest implements ShouldQueue
 
     public int $tries = 1;
 
+    /** Google Maps shows about this many results per search. */
+    private const MAX_PER_SEARCH = 120;
+
     public function __construct(public LeadRequest $leadRequest) {}
 
     public function handle(): void
@@ -38,10 +41,25 @@ class ScrapeLeadRequest implements ShouldQueue
 
         $seen = [];
         $failures = [];
+        $wanted = $this->leadRequest->max_results;
+        $onlyWithContact = (bool) $this->leadRequest->only_with_contact;
+        $isGeofence = $this->leadRequest->location_mode === LocationMode::Geofence;
 
         foreach ($this->leadRequest->searchTargets() as $target) {
+            $remaining = $wanted - count($seen);
+
+            if ($remaining <= 0) {
+                break;
+            }
+
             try {
-                $found = $scraper->scrape($target['url'], $this->leadRequest->max_results);
+                $found = $scraper->scrape(
+                    $target['url'],
+                    $onlyWithContact ? self::MAX_PER_SEARCH : min(self::MAX_PER_SEARCH, $remaining),
+                    true,
+                    $isGeofence ? null : $remaining,
+                    $onlyWithContact,
+                );
             } catch (Throwable $exception) {
                 $failures[] = "{$target['query']}: {$exception->getMessage()}";
 
@@ -81,6 +99,10 @@ class ScrapeLeadRequest implements ShouldQueue
                     ...$address,
                     'source_url' => $lead['source_url'] ?? null,
                 ]);
+
+                if (count($seen) >= $wanted) {
+                    break;
+                }
             }
 
             $this->leadRequest->update(['total_leads' => count($seen)]);

@@ -14,6 +14,8 @@ import { chromium } from 'playwright';
 
 const job = JSON.parse(process.argv[2] ?? '{}');
 const maxResults = Math.min(Math.max(Number(job.maxResults) || 20, 1), 60);
+const stopAfter = Number(job.stopAfter) > 0 ? Number(job.stopAfter) : Infinity;
+const requireContact = job.requireContact === true;
 
 const log = (message) => process.stderr.write(`${message}\n`);
 const fail = (message) => {
@@ -131,14 +133,26 @@ try {
     const leads = [];
 
     for (const url of urls) {
+        if (leads.length >= stopAfter) {
+            log(`Reached ${stopAfter} leads, stopping`);
+            break;
+        }
+
         try {
-            leads.push(await readPage(page, url));
+            const lead = await readPage(page, url);
+
+            if (!requireContact || (lead.email && lead.phone)) {
+                leads.push(lead);
+            }
         } catch (error) {
             log(`Skipped ${url}: ${error.message}`);
         }
     }
 
-    process.stdout.write(JSON.stringify(leads));
+    await new Promise((resolve) => process.stdout.write(JSON.stringify(leads), resolve));
 } finally {
-    await browser.close();
+    // Never let a stuck browser keep the job running once the leads are collected.
+    await Promise.race([browser.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10000))]);
 }
+
+process.exit(0);

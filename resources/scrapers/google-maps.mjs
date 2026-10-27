@@ -2,7 +2,9 @@
  * Google Maps lead scraper (Playwright).
  *
  * Usage: node google-maps.mjs '<json job>'
- *   job: { searchUrl: string, maxResults: number, enrichWebsites: boolean }
+ *   job: { searchUrl, maxResults, enrichWebsites, stopAfter?, requireContact? }
+ *   Stops as soon as `stopAfter` leads are collected (only leads with both an
+ *   email and a phone number when `requireContact` is true).
  *
  * Prints a JSON array of leads to stdout. Progress and errors go to stderr.
  */
@@ -11,6 +13,8 @@ import { chromium } from 'playwright';
 const job = JSON.parse(process.argv[2] ?? '{}');
 const maxResults = Math.min(Math.max(Number(job.maxResults) || 20, 1), 120);
 const enrichWebsites = job.enrichWebsites !== false;
+const stopAfter = Number(job.stopAfter) > 0 ? Number(job.stopAfter) : Infinity;
+const requireContact = job.requireContact === true;
 
 const log = (message) => process.stderr.write(`${message}\n`);
 const pause = (min, max) => new Promise((resolve) => setTimeout(resolve, min + Math.random() * (max - min)));
@@ -144,6 +148,11 @@ try {
     const leads = [];
 
     for (const url of urls) {
+        if (leads.length >= stopAfter) {
+            log(`Reached ${stopAfter} leads, stopping`);
+            break;
+        }
+
         try {
             const lead = await readPlace(page, url);
 
@@ -151,13 +160,18 @@ try {
                 await enrichFromWebsite(context, lead).catch((error) => log(`Enrich failed: ${error.message}`));
             }
 
-            leads.push(lead);
+            if (!requireContact || (lead.email && lead.phone)) {
+                leads.push(lead);
+            }
         } catch (error) {
             log(`Skipped ${url}: ${error.message}`);
         }
     }
 
-    process.stdout.write(JSON.stringify(leads));
+    await new Promise((resolve) => process.stdout.write(JSON.stringify(leads), resolve));
 } finally {
-    await browser.close();
+    // Never let a stuck browser keep the job running once the leads are collected.
+    await Promise.race([browser.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 10000))]);
 }
+
+process.exit(0);

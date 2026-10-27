@@ -50,7 +50,7 @@ class ScrapeLeadRequestJobTest extends TestCase
 
         $leadRequest->refresh();
 
-        $this->assertSame(LeadRequestStatus::Completed, $leadRequest->status);
+        $this->assertSame(LeadRequestStatus::Completed, $leadRequest->status, (string) $leadRequest->error);
         $this->assertSame(1, $leadRequest->total_leads);
         $this->assertDatabaseHas('leads', ['lead_request_id' => $leadRequest->id, 'business_name' => 'Bright Smile']);
         $this->assertDatabaseMissing('leads', ['business_name' => 'Bright Smile Duplicate']);
@@ -98,6 +98,66 @@ class ScrapeLeadRequestJobTest extends TestCase
             'category' => 'Orthodontist',
             'location' => 'Cebu City',
         ]);
+    }
+
+    public function test_it_stops_searching_once_the_wanted_leads_are_found(): void
+    {
+        $leadRequest = LeadRequest::factory()->create([
+            'max_results' => 2,
+            'locations' => ['Manila', 'Cebu City', 'Davao City'],
+        ]);
+
+        $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
+            $mock->shouldReceive('scrape')
+                ->once()
+                ->with(\Mockery::any(), 2, true, 2, false)
+                ->andReturn([
+                    $this->place('First', '111'),
+                    $this->place('Second', '222'),
+                    $this->place('Third', '333'),
+                ]);
+        });
+
+        (new ScrapeLeadRequest($leadRequest))->handle();
+
+        $leadRequest->refresh();
+
+        $this->assertSame(LeadRequestStatus::Completed, $leadRequest->status);
+        $this->assertSame(2, $leadRequest->total_leads);
+        $this->assertDatabaseCount('leads', 2);
+        $this->assertDatabaseMissing('leads', ['business_name' => 'Third']);
+    }
+
+    public function test_it_only_asks_for_the_leads_still_missing_on_the_next_search(): void
+    {
+        $leadRequest = LeadRequest::factory()->create([
+            'max_results' => 3,
+            'locations' => ['Manila', 'Cebu City'],
+        ]);
+
+        $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
+            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 3, true, 3, false)
+                ->andReturn([$this->place('One', '111')]);
+            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 2, true, 2, false)
+                ->andReturn([$this->place('Two', '222'), $this->place('Three', '333')]);
+        });
+
+        (new ScrapeLeadRequest($leadRequest))->handle();
+
+        $this->assertSame(3, $leadRequest->refresh()->total_leads);
+    }
+
+    public function test_it_passes_the_contact_requirement_to_the_scraper(): void
+    {
+        $leadRequest = LeadRequest::factory()->create(['max_results' => 5, 'only_with_contact' => true]);
+
+        $this->mock(GoogleMapsScraper::class, function (MockInterface $mock) {
+            $mock->shouldReceive('scrape')->once()->with(\Mockery::any(), 120, true, 5, true)->andReturn([]);
+        });
+
+        (new ScrapeLeadRequest($leadRequest))->handle();
+
+        $this->assertSame(LeadRequestStatus::Completed, $leadRequest->refresh()->status);
     }
 
     public function test_it_saves_town_zip_code_and_country(): void

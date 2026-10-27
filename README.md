@@ -67,7 +67,7 @@ If Vite's default port is busy it picks the next free one automatically; no acti
 1. Register or log in, then open **Generate Leads** in the sidebar.
 2. **Choose a source.** Google Maps and Facebook are available (Facebook needs the one-time login described below). LinkedIn is listed but disabled, because it restricts automated access.
 3. **Choose how to find leads:** a specific town/city, multiple towns/cities, a specific country, multiple countries, or a geofence (latitude/longitude plus a radius in kilometres or miles).
-4. **Choose business categories** (dental clinics, orthodontists, periodontists and more) and the maximum results per search.
+4. **Choose business categories** (dental clinics, orthodontists, periodontists and more) and how many leads you need. The search stops as soon as that many leads are found, then the request is marked Completed, so nothing keeps running in the background.
 5. The request is queued and scraped by Playwright in the background. Open **Lead Requests** to see every request with its date and time, status and lead count.
 6. Open a request to see its leads, then click **Export to Excel** or **Export to Google Sheets**.
 
